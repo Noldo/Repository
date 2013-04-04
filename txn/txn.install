@@ -1,0 +1,57 @@
+<?php
+
+require_once "txn.inc";
+
+/**
+ * Implements hook_install().
+ */
+function txn_install() {
+  variable_del(TXN_TAXONOMY_TERM);
+  $term = (object) array(
+    'name' => TXN_TAXONOMY_TERM_NAME,
+    'vid' => userpoints_get_vid(),
+  );
+  taxonomy_term_save($term);
+  variable_set(TXN_TAXONOMY_TERM, $term->tid);
+  
+ //$schema=drupal_get_schema();
+  
+  }
+
+  function txn_enable() {
+  if (!db_table_exists('userpoints_trnscts')) {
+		drupal_install_schema('txn');
+	//	db_create_table('userpoints_trnscts',userpoints_trnscts_schema());
+}
+  }
+  /**
+  *Implements hook_schema for pending transactions table
+  *
+  */
+  function txn_schema()
+  {
+  $schema['userpoints_trnscts'] = array(
+	    'description' => 'For userpoints unapproved transactions',
+	    'fields' => array(
+	      'trid'						=> array('type' => 'int', 'auto_increment' => TRUE),
+	      'name'						=> array('type' => 'varchar','length' => 64, 'not null' => TRUE, 'default' => 'Error  happened'),
+	      'amount'						=> array('type' => 'int', 'unsigned' => TRUE,  'not null' => TRUE, 'default' => '0'),
+		  'method'						=> array('type' => 'varchar','length' => 32, 'not null' => TRUE, 'default' => 'Error  happened'),
+	      'photo'						=> array('type' => 'varchar','length' => 64),
+	      'additional'    				=> array('type' => 'varchar','length' => 256),
+	      'timestamp'					=> array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => '0'),
+		  'action'						=> array('type' => 'varchar','length' => 16, 'not null' => TRUE),
+		  'approved'						=> array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => '1'),
+	    ),
+    'primary key' => array('trid'),
+	  );
+	  return($schema);
+  }
+/**
+ * Implements hook_uninstall().
+ */
+function txn_uninstall() {
+ drupal_uninstall_schema('txn');
+  taxonomy_term_delete(variable_get(TXN_TAXONOMY_TERM, false));
+  variable_del(TXN_TAXONOMY_TERM);
+}

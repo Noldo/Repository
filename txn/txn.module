@@ -1,0 +1,249 @@
+<?php
+
+require_once "txn.inc";
+require_once "txn.admin.inc";
+
+/**
+ * @return array
+ */
+function txn_permission() {
+  return array(
+    TXN_NO_TAX => array(
+      'title' => t('Perform transactions with no tax'),
+      'description' => t(''),
+    ),
+    TXN_ADMIN => array(
+      'title' => t('Administer transactions'),
+      'description' => t(''),
+    ),
+  );
+}
+
+/**
+ * @return array
+ */
+function txn_menu() {
+  $items = array();
+
+  $items['admin/config/people/txn'] = array(
+    'title' => t('Transactions'),
+    'description' => t('Manage transactions'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('txn_admin_settings'),
+    'access arguments' => array(TXN_ADMIN),
+    'file' => 'txn.admin.inc',
+  );
+  $items['admin/config/people/txn/list'] = array(
+    'title' => t('List'),
+    'file' => 'txn.admin.inc',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -2,
+  );
+  $items['admin/config/people/txn/settings'] = array(
+    'title' => t('Settings'),
+    'description' => t('Settings'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('txn_admin_settings'),
+    'access arguments' => array(TXN_ADMIN),
+    'file' => 'txn.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 0,
+  );
+
+  $items['admin/config/people/txn/add'] = array(
+    'title' => t('Add transactions'),
+    'description' => t('Add transactions'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('txn_admin_add'),
+    'access arguments' => array(TXN_ADMIN),
+    'file' => 'txn.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 1,
+	);
+  
+  
+    $items['txn/in'] = array(
+    'title' => t('Income'),
+    'description' => t('Add balance'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('txn_in_form'),
+    'access arguments' => array('txn_admin'),
+    'file' => 'txn.admin.inc',
+	'type' => MENU_NORMAL_ITEM, //тип страницы
+	);
+	
+	$items['txn/out'] = array(
+    'title' => t('Outcome'),
+    'description' => t('Withdraw balance'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('txn_out_form'),
+    'access arguments' => array('txn_admin'),
+    'file' => 'txn.admin.inc',
+	'type' => MENU_NORMAL_ITEM, //тип страницы
+	);
+	
+	$items['admin/settings/txn/request/%'] = array(
+    'title' => t('Requests'),
+    'description' => t('Pending requests'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('requests_form',4),
+    'access arguments' => array('txn_admin'),
+    'file' => 'txn.admin.inc',
+	'type' => MENU_LOCAL_TASK, //тип страницы
+	);
+
+  return $items;
+}
+
+/**
+ *
+ */
+function txn_get_tid() {
+  $term = taxonomy_term_load(variable_get(TXN_TAXONOMY_TERM, false));
+  if (!$term) {
+    $term = (object) array(
+      'name' => TXN_TAXONOMY_TERM_NAME,
+      'vid' => userpoints_get_vid(),
+    );
+    taxonomy_term_save($term);
+    variable_set(TXN_TAXONOMY_TERM, $term->tid);
+  }
+  return variable_get(TXN_TAXONOMY_TERM, false);
+}
+
+/**
+ * @param $uid
+ * @param $amount
+ * @param string $operation
+ */
+function txn_record($uid, $amount, $operation = '', $description = '') {
+  $params = array(
+    'points'      => $amount,
+    'uid'         => $uid,
+    'moderate'    => false,
+    'time_stamp'  => time(),
+    'operation'   => $operation,
+    'tid'         => txn_get_tid(),
+    'expirydate'  => 0,
+    'description' => $description,
+    'entity_id'   => $uid,
+    'entity_type' => 'user',
+  );
+  userpoints_userpointsapi($params);
+}
+
+/**
+ * @param $account
+ * @param $amount
+ */
+function txn_income($account, $amount) {
+  txn_record($account->uid, $amount, TXN_INCOME);
+}
+
+/**
+ * @param $account
+ * @param $amount
+ * @return int
+ */
+function txn_tax_calc($account, $amount) {
+  return user_access(TXN_NO_TAX, $account) ? 0 : (int)ceil($amount*(float)variable_get(TXN_TAX_AMOUNT, 10)/100);
+}
+
+/**
+ * @param $account
+ * @param $amount
+ * @param bool $flag
+ * @return int
+ */
+function txn_prepare_amount($account, $amount, $flag = true) {
+  return $flag ? $amount + txn_tax_calc($account, $amount) : $amount;
+}
+
+/**
+ * @param bool $uid
+ * @return array|int
+ */
+function txn_wallet($uid) {
+  return userpoints_get_current_points($uid, txn_get_tid());
+}
+
+/**
+ * @param $account
+ * @param $amount
+ * @return bool
+ */
+function txn_suff($account, $amount, $flag = true) {
+  return txn_prepare_amount($account, $amount, $flag) <= txn_wallet($account->uid);
+}
+
+/**
+ * @param $uid
+ * @param $amount
+ */
+function txn_withdraw($account, $amount, $flag = true) {
+  if (txn_suff($account, $amount, $flag)) {
+    txn_record($account->uid, -$amount, TXN_WITHDRAW);
+    if ($flag) {
+      txn_tax($account, txn_tax_calc($account, $amount));
+    }
+    return true;
+  } return false;
+}
+
+/**
+ * @param $account
+ * @param $amount
+ */
+function  txn_tax($account, $amount) {
+  txn_record($account->uid, -$amount, TXN_TAX);
+  txn_record(1, $amount, TXN_TAX, 'From user #'.$account->uid);
+}
+
+/**
+ * @param $account1
+ * @param $account2
+ * @param $amount
+ */
+function txn_transfer($account1, $account2, $amount, $flag = true) {
+  if (txn_suff($account1, $amount, $flag)) {
+    txn_record($account1->uid, -$amount, TXN_TRANSFER);
+    txn_record($account2->uid, $amount, TXN_TRANSFER, 'From user #'.$account1->uid);
+    if ($flag) {
+      txn_tax($account1, txn_tax_calc($account1, $amount));
+    }
+    return true;
+  } return false;
+}
+
+/**
+*Block for main page
+*
+*
+*/
+function txn_block_info(){
+    $blocks = array();
+    $blocks['points']['info'] = 'Your points';
+    return $blocks;
+}
+/*
+*"Your points" block content
+*
+*/
+
+  function txn_block_view($delta = ''){
+	global $user;
+      $block = array();
+      switch ($delta){
+          case 'points': 
+              $block['subject'] = 'Ваши очки';
+              $block['content'] = ''; 
+
+				$pts = db_query("SELECT points FROM {userpoints_total} where uid=".$user->uid)->fetchField();            
+                  $block['content'] .='<div>Ваш баланс:'.$pts.'</div><a href="/txn/out">Вывод</a><br><a href="/txn/in">Ввод</a>';
+                  // base_path() - функция возвращает путь к корню сайта
+              
+          break;
+      }
+      return $block;
+  }
+
