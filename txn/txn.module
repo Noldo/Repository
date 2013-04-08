@@ -80,7 +80,7 @@ function txn_menu() {
 	'type' => MENU_NORMAL_ITEM, //тип страницы
 	);
 	
-	$items['admin/settings/txn/request/%'] = array(
+	$items['admin/settings/txn/request/%lid'] = array(
     'title' => t('Requests'),
     'description' => t('Pending requests'),
     'page callback' => 'drupal_get_form',
@@ -92,7 +92,14 @@ function txn_menu() {
 
   return $items;
 }
-
+/**
+*
+*/
+function lid_to_arg($arg)
+{
+if ($arg=='') return 1;
+return $arg;
+}
 /**
  *
  */
