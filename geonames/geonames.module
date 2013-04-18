@@ -1,0 +1,211 @@
+<?php
+
+require_once "geonames.inc";
+/**
+*adding page for queries and for cache clear
+*/
+function geonames_menu() {
+  $items = array();
+
+  $items['gn'] = array(
+    'title' => t('Geonames'),
+    'description' => t('Prepare request'),
+    'page callback' => 'geonames_request',
+	'type' => MENU_NORMAL_ITEM,
+	'menu_name' => 'main-menu',
+	'access callback' => TRUE, 
+  );
+  $items['admin/config/geonames'] = array(
+    'title' => t('Geonames'),
+    'description' => t('Prepare request'),
+	'page callback' => 'drupal_get_form',
+    'page arguments' => array('geonames_cache_clear_form'),
+	'type' => MENU_LOCAL_TASK,
+	'access callback' => TRUE, 
+  );
+  return $items;
+  }
+
+/**
+* page with requests
+*/
+function geonames_request()
+{
+	$form = drupal_get_form('geonames_request_form');
+	$page = drupal_render($form);
+	$form = drupal_get_form('geonames_result_form');
+	$page .= drupal_render($form);
+	return $page;
+}
+
+/**
+* form, building query
+*/
+function geonames_request_form()
+{
+$form = array();
+$config=geonames_config();
+$services = array_keys($config);
+$form['service'] = array(
+		'#type' => 'select',
+		'#title' => t('Service:'),
+		'#required' => true,
+    );
+foreach ($services as $service)
+{
+$form['service']['#options'][$service]=$config[$service]['service_full_name'];
+}
+$i=0;
+foreach ($services as $service)
+{
+	$i++;
+	$form[$service] = array(
+		'#type' => 'fieldset',
+		'#title' => $config[$service]['service_full_name'],
+		'#states' => array(
+		'visible' => array(
+		'select[name="service"]' => array('value' => $service)
+		)
+		),
+	);
+	foreach ($config[$service]['allowed_parameters'] as $key=>$parameter)
+	{
+		$form[$service][$parameter.$i]=array(
+			'#type' => 'textfield',
+			'#title' => $key);
+		//if (isset($config[$service]['required_parameters']))
+		//	if (in_array($parameter,$config[$service]['required_parameters']))
+		//	$form[$service][$parameter.$i]['#required'] = true;
+	}
+}
+	$form['send'] = array(
+    '#type' => 'button',
+    '#default_value' => t('Send'),
+	'#ajax' => array(
+      'callback' => 'geonames_show_result',
+       'wrapper' => 'geonames-result-form',
+	   'method' => 'html')
+  );			
+	return $form;
+}
+/**
+* wrapper for answer from geonames.org
+*/
+function geonames_result_form()
+{	
+	$form = array();
+	return $form;
+}
+/**
+* ajax function, that calls to server
+*/
+function geonames_show_result($form, &$form_state) {
+$service=$form_state['values']['service'];
+$querystring='';
+foreach($form_state['values'] as $key => $value)
+{
+	if ($key!='service' && $value && $key!='send' && $key!='form_build_id' && $key!='form_token' && $key!='form_id'  && $key!='op')
+	{
+	$querystring.= preg_replace("/[0-9]{1}/", "", $key).'='.$value.'&';
+	}
+}
+  $form = array();
+  $pat=geonames_service_url($service) . $querystring . 'app=drupal';
+  if ($cache = cache_get('geonames:'.$service.$querystring )) {
+      $data = $cache->data;
+    }
+	else
+	{
+	$response=drupal_http_request($pat);
+	$data = $response->data;
+	cache_set('geonames:'.$service.$querystring, $data, 'cache', time()+60*60*24*14);
+	}
+	$arr = json_decode(json_encode((array) simplexml_load_string($data)), 1);
+$answer='<br>Query was:'. $pat.'<br>';
+foreach ($arr as $key=>$val)
+	{
+		if ($key!='status')
+		{
+			if (is_array($val))
+			{
+			$answer.=$key.'<ul>';
+				foreach ($val as $key=>$val)
+				{
+					if (is_array($val))
+						{
+						$answer.=$key.'<ul>';
+							foreach ($val as $key=>$val)
+							{
+								if (is_array($val))
+								{
+								$answer.=$key.'<ul>';
+									foreach ($val as $key=>$val)
+									{
+									$answer.='<li>'.$key.':  '.$val.'</li>';
+									}
+								$answer.='</ul>';
+								}
+								else 
+								{
+								$answer.='<li>'.$key.':  '.$val.'</li>';
+								}
+							}
+						$answer.='</ul>';
+						}
+					else 
+						{
+						$answer.='<li>'.$key.':  '.$val.'</li>';
+						}
+				}
+			$answer.='</ul>';
+			}
+			else 
+			{
+			$answer.=$key.':  '.$val.'<br>';
+			}
+		}
+		else
+		{
+		$answer.=$val['@attributes']['message'].'<br>Query was:'. $pat;
+		
+		}
+	}
+   $form['result'] = array(
+    '#markup' => $answer,
+  );
+  return $form;}
+
+
+/**
+*Building query url
+*/
+function geonames_service_url($service) {
+  if ($service) {
+    $username = variable_get('geonames_username', '');
+    return GEONAMES_FREE_SERVER_URL. $service .'?username='. $username .'&';
+  }
+  return FALSE;
+}
+
+/**
+* form for cache clear
+*/
+function geonames_cache_clear_form()
+{
+$form = array();
+$form['clear'] = array(
+    '#type' => 'submit',
+    '#default_value' => t('Send'),
+	
+  );		
+return $form;
+}
+/**
+*delete from table cache all entries, which id starts from "geonames:"
+*/
+function geonames_cache_clear_form_submit($adminpage = TRUE) {
+  cache_clear_all('geonames:', 'cache', TRUE);
+  if ($adminpage) {
+    drupal_set_message(t('Cache cleared.'));
+  }
+}

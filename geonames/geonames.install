@@ -1,0 +1,45 @@
+<?php
+
+require_once "geonames.inc";
+
+/**
+ * Implements hook_install().
+ */
+
+
+  function geonames_enable() {
+ /* if (!db_table_exists('geonames_queries')) {
+		drupal_install_schema('geonames');
+}*/
+  }
+  /**
+  *Implements hook_schema for pending transactions table
+  *
+  */
+  function geonames_schema()
+  {
+  /*
+  $schema['geonames_queries'] = array(
+	    'description' => 'For nwrs from geonames.org',
+	    'fields' => array(
+	      'rid'							=> array('type' => 'int', 'auto_increment' => TRUE),
+	      'name'						=> array('type' => 'varchar','length' => 64, 'not null' => TRUE, 'default' => 'Error  happened'),
+	      'amount'						=> array('type' => 'int', 'unsigned' => TRUE,  'not null' => TRUE, 'default' => '0'),
+		  'method'						=> array('type' => 'varchar','length' => 32, 'not null' => TRUE, 'default' => 'Error  happened'),
+	      'photo'						=> array('type' => 'varchar','length' => 64),
+	      'additional'    				=> array('type' => 'varchar','length' => 256),
+	      'timestamp'					=> array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => '0'),
+		  'action'						=> array('type' => 'varchar','length' => 16, 'not null' => TRUE),
+		  'approved'						=> array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => '1'),
+	    ),
+    'primary key' => array('trid'),
+	  );
+	  return($schema);
+	  */
+  }
+/**
+ * Implements hook_uninstall().
+ */
+function geonames_uninstall() {
+ drupal_uninstall_schema('geonames');
+}
